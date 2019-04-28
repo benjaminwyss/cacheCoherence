@@ -48,6 +48,44 @@ class CacheCoherence:
         # Keep track of stats for each processor
         self.processorStatTracker = [processorStats()] * 4
 
+    def simulateCacheRecords(self):
+        for cacheRecord in self.cacheRecords:
+            cacheLine = self.cacheLines[cacheRecord.index]
+            state = cacheLine.processorStates[cacheRecord.processor]
+
+            #prWr
+            if (cacheRecord.isWrite):
+                if state == 'M':
+                    pass
+                elif state == 'O':
+                    pass
+                elif state == 'E':
+                    pass
+                elif state == 'S':
+                    pass
+                elif state == 'I':
+                    pass
+            #prRd
+            else:
+                if state == 'M':
+                    pass
+                elif state == 'O':
+                    pass
+                elif state == 'E':
+                    pass
+                elif state == 'S':
+                    pass
+                elif state == 'I':
+                    pass
+
+    def busRd(self, originator):
+        pass
+
+    def busRdX(self, originator):
+        pass
+
+    def busUpgr(self, originator):
+        pass
 
     def readCacheRecordsFromFiles(self):
         for i in range(0, 4):
@@ -105,5 +143,5 @@ class CacheCoherence:
 if __name__ == "__main__":
     myCacheCoherence = CacheCoherence()
     myCacheCoherence.readCacheRecordsFromFiles()
-    myCacheCoherence.testPrints()
+    myCacheCoherence.simulateCacheRecords()
     myCacheCoherence.printStats()
