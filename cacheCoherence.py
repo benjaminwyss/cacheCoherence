@@ -4,11 +4,12 @@ class CacheRecord:
         self.processor = processor
         self.isWrite = isWrite
         self.address = address
-        self.offset = int(address[30:32], 2)
-        # Number of lines = 32KB cache / 64B cache line = 9 bits of index
-        self.index = int(address[21:30], 2)
-        # 32 bit address - 2 bit offset - 9 bit index = 21 bits of tag
-        self.tag = int(address[0:21], 2)
+        # 32 byte cache line = 2^5. This corresponds to 5 bits of offset
+        self.offset = int(address[27:32], 2)
+        # Number of lines = 16KB cache / 32B cache line = 2^9. This corresponds to 9 bits of index
+        self.index = int(address[18:27], 2)
+        # 32 bit address - 5 bit offset - 9 bit index = 18 bits of tag
+        self.tag = int(address[0:18], 2)
     
     def __str__(self):
         return "[{}, {}, {}, {}, {}, {}, {}]".format(self.cycle, self.processor, ("Write" if self.isWrite else "Read"), self.address, self.offset, self.index, self.tag)
@@ -23,12 +24,11 @@ class CacheRecord:
 
 class CacheLine:
     def __init__(self):
-        self.tags = [False, False]
-        self.lru = 0
-        self.processorStates = ['I', 'I', 'I', 'I']
+        self.tags = [None] * 32
+        self.processorStates = ['I'] * 4
 
     def __str__(self):
-        return "[{}, {}, {}]".format(self.tags, self.lru, self.processorStates)
+        return "[{}, {}]".format(self.tags, self.processorStates)
 
 class processorStats:
     def __init__(self):
@@ -44,9 +44,9 @@ class CacheCoherence:
     def __init__(self):
         self.cacheRecords = []
         # Since index is 9 bits, there are 2^9, or 512 cache lines
-        self.cacheLines = [CacheLine()] * 512
+        self.cacheLines = [CacheLine() for i in range(0, 512)] 
         # Keep track of stats for each processor
-        self.processorStatTracker = [processorStats()] * 4
+        self.processorStatTracker = [processorStats() for i in range(0, 4)]
 
     def simulateCacheRecords(self):
         for cacheRecord in self.cacheRecords:
@@ -117,6 +117,10 @@ class CacheCoherence:
         print()
 
         print("Dirty Writebacks: P0 = {}, P1 = {}, P2 = {}, P3 = {}".format(self.processorStatTracker[0].dirtyWriteBacks, self.processorStatTracker[1].dirtyWriteBacks, self.processorStatTracker[2].dirtyWriteBacks, self.processorStatTracker[3].dirtyWriteBacks))
+        for i in range(0, 512):
+            if 'M' in self.cacheLines[i].processorStates or 'O' in self.cacheLines[i].processorStates:
+                print("Final cache line dirty at index {}".format(i))
+
         print()
 
         for processor in range(0, 4):
