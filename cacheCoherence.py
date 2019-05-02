@@ -117,11 +117,12 @@ class CacheCoherence:
         print()
 
         print("Dirty Writebacks: P0 = {}, P1 = {}, P2 = {}, P3 = {}".format(self.processorStatTracker[0].dirtyWriteBacks, self.processorStatTracker[1].dirtyWriteBacks, self.processorStatTracker[2].dirtyWriteBacks, self.processorStatTracker[3].dirtyWriteBacks))
+        print("Currently dirty cache lines at indexes: ", end='')
         for i in range(0, 512):
             if 'M' in self.cacheLines[i].processorStates or 'O' in self.cacheLines[i].processorStates:
-                print("Final cache line dirty at index {}".format(i))
+                print("{}, ".format(i), end='')
 
-        print()
+        print('\n')
 
         for processor in range(0, 4):
             m = 0
@@ -148,4 +149,6 @@ if __name__ == "__main__":
     myCacheCoherence = CacheCoherence()
     myCacheCoherence.readCacheRecordsFromFiles()
     myCacheCoherence.simulateCacheRecords()
+    myCacheCoherence.cacheLines[0].processorStates[1] = 'M'
+    myCacheCoherence.cacheLines[511].processorStates[1] = 'M'
     myCacheCoherence.printStats()
