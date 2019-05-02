@@ -4,13 +4,13 @@ class CacheRecord:
         self.processor = processor
         self.isWrite = isWrite
         self.address = address
-        # 32 byte cache line = 2^5. This corresponds to 5 bits of offset
-        self.offset = int(address[27:32], 2)
+        # 32 byte cache line = 2^5. This corresponds to 5 bits of offset. This offset is divided by 4 since the processor loads/stores words instead of bytes
+        self.offset = int(int(address[27:32], 2) / 4)
         # Number of lines = 16KB cache / 32B cache line = 2^9. This corresponds to 9 bits of index
         self.index = int(address[18:27], 2)
         # 32 bit address - 5 bit offset - 9 bit index = 18 bits of tag
         self.tag = int(address[0:18], 2)
-    
+
     def __str__(self):
         return "[{}, {}, {}, {}, {}, {}, {}]".format(self.cycle, self.processor, ("Write" if self.isWrite else "Read"), self.address, self.offset, self.index, self.tag)
 
@@ -24,7 +24,7 @@ class CacheRecord:
 
 class CacheLine:
     def __init__(self):
-        self.tags = [None] * 32
+        self.tags = [None] * 8
         self.processorStates = ['I'] * 4
 
     def __str__(self):
@@ -44,7 +44,7 @@ class CacheCoherence:
     def __init__(self):
         self.cacheRecords = []
         # Since index is 9 bits, there are 2^9, or 512 cache lines
-        self.cacheLines = [CacheLine() for i in range(0, 512)] 
+        self.cacheLines = [CacheLine() for i in range(0, 512)]
         # Keep track of stats for each processor
         self.processorStatTracker = [processorStats() for i in range(0, 4)]
 
@@ -56,27 +56,41 @@ class CacheCoherence:
             #prWr
             if (cacheRecord.isWrite):
                 if state == 'M':
+                    # Remain in M state, no bus signal
                     pass
                 elif state == 'O':
-                    pass
+                    cacheLine.processorStates[cacheRecord.processor] = 'M'
+                    self.busUpgr(cacheRecord.processor)
                 elif state == 'E':
-                    pass
+                    cacheLine.processorStates[cacheRecord.processor] = 'M'
                 elif state == 'S':
-                    pass
+                    cacheLine.processorStates[cacheRecord.processor] = 'M'
+                    self.busUpgr(cacheRecord.processor)
                 elif state == 'I':
-                    pass
+                    cacheLine.processorStates[cacheRecord.processor] = 'M'
+                    self.busRdX(cacheRecord.processor)
             #prRd
             else:
                 if state == 'M':
+                    # Remain in M state, no bus signal
                     pass
                 elif state == 'O':
+                    # Remain in O state, no bus signal
                     pass
                 elif state == 'E':
+                    # Remain in E state, no bus signal
                     pass
                 elif state == 'S':
+                    # remain in S state, no bus signal
                     pass
                 elif state == 'I':
-                    pass
+                    if 'M' in cacheLine.processorStates or 'O' in cacheLine.processorStates or 'E' in cacheLine.processorStates:
+                        cacheLine.processorStates[cacheRecord.processor] = 'S'
+                        self.busRd(cacheRecord.processor)
+                    else:
+                        cacheLine.processorStates[cacheRecord.processor] = 'E'
+                        self.busRd(cacheRecord.processor)
+
 
     def busRd(self, originator):
         pass
@@ -98,7 +112,7 @@ class CacheCoherence:
 
             # Based on the definition for sorting CacheRecords, this arranges the records in chronological order
             self.cacheRecords.sort()
-    
+
     def testPrints(self):
         for record in self.cacheRecords:
             print(record)
@@ -149,6 +163,4 @@ if __name__ == "__main__":
     myCacheCoherence = CacheCoherence()
     myCacheCoherence.readCacheRecordsFromFiles()
     myCacheCoherence.simulateCacheRecords()
-    myCacheCoherence.cacheLines[0].processorStates[1] = 'M'
-    myCacheCoherence.cacheLines[511].processorStates[1] = 'M'
     myCacheCoherence.printStats()
