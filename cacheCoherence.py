@@ -53,9 +53,14 @@ class CacheCoherence:
             cacheLine = self.cacheLines[cacheRecord.index]
             state = cacheLine.processorStates[cacheRecord.processor]
 
+            conflictMiss = False
+
             #Handle Conflict Misses
             if (cacheLine.tags[cacheRecord.processor] != None and cacheLine.tags[cacheRecord.processor] != cacheRecord.tag):
-                print(cacheRecord, cacheLine)
+                if cacheLine.processorStates[cacheRecord.processor] == 'M' or cacheLine.processorStates[cacheRecord.processor] == 'O':
+                    self.processorStatTracker[cacheRecord.processor].dirtyWriteBacks += 1
+                cacheLine.processorStates[cacheRecord.processor] = 'I'
+                conflictMiss = True
 
             #Update Tag Array
             cacheLine.tags[cacheRecord.processor] = cacheRecord.tag
@@ -67,15 +72,15 @@ class CacheCoherence:
                     pass
                 elif state == 'O':
                     cacheLine.processorStates[cacheRecord.processor] = 'M'
-                    self.busUpgr(cacheRecord.processor, cacheLine)
+                    self.busUpgr(cacheRecord.processor, cacheLine, cacheRecord.tag)
                 elif state == 'E':
                     cacheLine.processorStates[cacheRecord.processor] = 'M'
                 elif state == 'S':
                     cacheLine.processorStates[cacheRecord.processor] = 'M'
-                    self.busUpgr(cacheRecord.processor, cacheLine)
+                    self.busUpgr(cacheRecord.processor, cacheLine, cacheRecord.tag)
                 elif state == 'I':
                     cacheLine.processorStates[cacheRecord.processor] = 'M'
-                    self.busRdX(cacheRecord.processor, cacheLine)
+                    self.busRdX(cacheRecord.processor, cacheLine, cacheRecord.tag)
             #prRd
             else:
                 if state == 'M':
@@ -92,8 +97,8 @@ class CacheCoherence:
                     pass
                 elif state == 'I':
                     if 'M' in cacheLine.processorStates or 'O' in cacheLine.processorStates or 'E' in cacheLine.processorStates or 'S' in cacheLine.processorStates:
+                        self.busRd(cacheRecord.processor, cacheLine, cacheRecord.tag)
                         cacheLine.processorStates[cacheRecord.processor] = 'S'
-                        self.busRd(cacheRecord.processor, cacheLine)
                     else:
                         cacheLine.processorStates[cacheRecord.processor] = 'E'
                         #In a real processor, this would cause a BusRd signal, but since the data is fetched from memory nothing needs to be simulated here.
@@ -106,29 +111,26 @@ class CacheCoherence:
         
 
 
-    def busRd(self, originator, cacheLine):
-        if 'M' in cacheLine.processorStates:
-            for processor in range(0, 4):
-                if cacheLine.processorStates[processor] == 'M':
-                    self.processorStatTracker[processor].cacheTransfers[originator] += 1
-                    cacheLine.processorStates[processor] = 'O'
-        elif 'O' in cacheLine.processorStates:
-            for processor in range(0, 4):
-                if cacheLine.processorStates[processor] == 'O':
-                    self.processorStatTracker[processor].cacheTransfers[originator] += 1
-        elif 'E' in cacheLine.processorStates:
-            for processor in range(0, 4):
-                if cacheLine.processorStates[processor] == 'E':
-                    self.processorStatTracker[processor].cacheTransfers[originator] += 1
-                    cacheLine.processorStates[processor] = 'S'
-        elif 'S' in cacheLine.processorStates:
-            for processor in range(0, 4):
-                if cacheLine.processorStates[processor] == 'S':
-                    self.processorStatTracker[processor].cacheTransfers[originator] += 1
-
-    def busRdX(self, originator, cacheLine):
+    def busRd(self, originator, cacheLine, tag):
         for processor in range(0, 4):
-            if processor != originator:
+            if cacheLine.processorStates[processor] == 'M' and cacheLine.tags[processor] == tag:
+                self.processorStatTracker[processor].cacheTransfers[originator] += 1
+                cacheLine.processorStates[processor] = 'O'
+                break
+            elif cacheLine.processorStates[processor] == 'O' and cacheLine.tags[processor] == tag:
+                self.processorStatTracker[processor].cacheTransfers[originator] += 1
+                break
+            elif cacheLine.processorStates[processor] == 'E' and cacheLine.tags[processor] == tag:
+                self.processorStatTracker[processor].cacheTransfers[originator] += 1
+                cacheLine.processorStates[processor] = 'S'
+                break
+            elif cacheLine.processorStates[processor] == 'S' and cacheLine.tags[processor] == tag:
+                self.processorStatTracker[processor].cacheTransfers[originator] += 1
+                break
+
+    def busRdX(self, originator, cacheLine, tag):
+        for processor in range(0, 4):
+            if processor != originator and cacheLine.tags[processor] == tag:
                 if cacheLine.processorStates[processor] == 'M':
                     cacheLine.processorStates[processor] = 'I'
                     cacheLine.tags[processor] = None
@@ -154,9 +156,9 @@ class CacheCoherence:
                     #Stay in state I
                     pass
 
-    def busUpgr(self, originator, cacheLine):
+    def busUpgr(self, originator, cacheLine, tag):
         for processor in range(0, 4):
-            if processor != originator:
+            if processor != originator and cacheLine.tags[processor] == tag:
                 if cacheLine.processorStates[processor] == 'M':
                     print("This case shouldn't happen")
                 elif cacheLine.processorStates[processor] == 'O':
