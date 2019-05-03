@@ -4,8 +4,8 @@ class CacheRecord:
         self.processor = processor
         self.isWrite = isWrite
         self.address = address
-        # 32 byte cache line = 2^5. This corresponds to 5 bits of offset. This offset is divided by 4 since the processor loads/stores words instead of bytes
-        self.offset = int(int(address[27:32], 2) / 4)
+        # 32 byte cache line = 2^5. This corresponds to 5 bits of offset.
+        self.offset = int(address[27:32], 2)
         # Number of lines = 16KB cache / 32B cache line = 2^9. This corresponds to 9 bits of index
         self.index = int(address[18:27], 2)
         # 32 bit address - 5 bit offset - 9 bit index = 18 bits of tag
@@ -24,7 +24,7 @@ class CacheRecord:
 
 class CacheLine:
     def __init__(self):
-        self.tags = [None] * 8
+        self.tags = [None] * 4
         self.processorStates = ['I'] * 4
 
     def __str__(self):
@@ -53,6 +53,13 @@ class CacheCoherence:
             cacheLine = self.cacheLines[cacheRecord.index]
             state = cacheLine.processorStates[cacheRecord.processor]
 
+            #Handle Conflict Misses
+            if (cacheLine.tags[cacheRecord.processor] != None and cacheLine.tags[cacheRecord.processor] != cacheRecord.tag):
+                print(cacheRecord, cacheLine)
+
+            #Update Tag Array
+            cacheLine.tags[cacheRecord.processor] = cacheRecord.tag
+
             #prWr
             if (cacheRecord.isWrite):
                 if state == 'M':
@@ -60,15 +67,15 @@ class CacheCoherence:
                     pass
                 elif state == 'O':
                     cacheLine.processorStates[cacheRecord.processor] = 'M'
-                    self.busUpgr(cacheRecord.processor)
+                    self.busUpgr(cacheRecord.processor, cacheLine)
                 elif state == 'E':
                     cacheLine.processorStates[cacheRecord.processor] = 'M'
                 elif state == 'S':
                     cacheLine.processorStates[cacheRecord.processor] = 'M'
-                    self.busUpgr(cacheRecord.processor)
+                    self.busUpgr(cacheRecord.processor, cacheLine)
                 elif state == 'I':
                     cacheLine.processorStates[cacheRecord.processor] = 'M'
-                    self.busRdX(cacheRecord.processor)
+                    self.busRdX(cacheRecord.processor, cacheLine)
             #prRd
             else:
                 if state == 'M':
@@ -84,22 +91,87 @@ class CacheCoherence:
                     # remain in S state, no bus signal
                     pass
                 elif state == 'I':
-                    if 'M' in cacheLine.processorStates or 'O' in cacheLine.processorStates or 'E' in cacheLine.processorStates:
+                    if 'M' in cacheLine.processorStates or 'O' in cacheLine.processorStates or 'E' in cacheLine.processorStates or 'S' in cacheLine.processorStates:
                         cacheLine.processorStates[cacheRecord.processor] = 'S'
-                        self.busRd(cacheRecord.processor)
+                        self.busRd(cacheRecord.processor, cacheLine)
                     else:
                         cacheLine.processorStates[cacheRecord.processor] = 'E'
-                        self.busRd(cacheRecord.processor)
+                        #In a real processor, this would cause a BusRd signal, but since the data is fetched from memory nothing needs to be simulated here.
+
+        #Write back all dirty lines at end of simulation
+        for cacheLine in self.cacheLines:
+            for processor in range(0, 4):
+                if (cacheLine.processorStates[processor] == 'M' or cacheLine.processorStates[processor] == 'O'):
+                    self.processorStatTracker[processor].dirtyWriteBacks += 1
+        
 
 
-    def busRd(self, originator):
-        pass
+    def busRd(self, originator, cacheLine):
+        if 'M' in cacheLine.processorStates:
+            for processor in range(0, 4):
+                if cacheLine.processorStates[processor] == 'M':
+                    self.processorStatTracker[processor].cacheTransfers[originator] += 1
+                    cacheLine.processorStates[processor] = 'O'
+        elif 'O' in cacheLine.processorStates:
+            for processor in range(0, 4):
+                if cacheLine.processorStates[processor] == 'O':
+                    self.processorStatTracker[processor].cacheTransfers[originator] += 1
+        elif 'E' in cacheLine.processorStates:
+            for processor in range(0, 4):
+                if cacheLine.processorStates[processor] == 'E':
+                    self.processorStatTracker[processor].cacheTransfers[originator] += 1
+                    cacheLine.processorStates[processor] = 'S'
+        elif 'S' in cacheLine.processorStates:
+            for processor in range(0, 4):
+                if cacheLine.processorStates[processor] == 'S':
+                    self.processorStatTracker[processor].cacheTransfers[originator] += 1
 
-    def busRdX(self, originator):
-        pass
+    def busRdX(self, originator, cacheLine):
+        for processor in range(0, 4):
+            if processor != originator:
+                if cacheLine.processorStates[processor] == 'M':
+                    cacheLine.processorStates[processor] = 'I'
+                    cacheLine.tags[processor] = None
+                    self.processorStatTracker[processor].invalidationFromM += 1
+                    self.processorStatTracker[processor].dirtyWriteBacks += 1
+                    self.processorStatTracker[processor].cacheTransfers[originator] += 1
+                elif cacheLine.processorStates[processor] == 'O':
+                    cacheLine.processorStates[processor] = 'I'
+                    cacheLine.tags[processor] = None
+                    self.processorStatTracker[processor].invalidationFromO += 1
+                    self.processorStatTracker[processor].dirtyWriteBacks += 1
+                    self.processorStatTracker[processor].cacheTransfers[originator] += 1
+                elif cacheLine.processorStates[processor] == 'E':
+                    cacheLine.processorStates[processor] = 'I'
+                    cacheLine.tags[processor] = None
+                    self.processorStatTracker[processor].invalidationFromE += 1
+                    self.processorStatTracker[processor].cacheTransfers[originator] += 1
+                elif cacheLine.processorStates[processor] == 'S':
+                    cacheLine.processorStates[processor] = 'I'
+                    cacheLine.tags[processor] = None
+                    self.processorStatTracker[processor].invalidationFromS += 1
+                elif cacheLine.processorStates[processor] == 'I':
+                    #Stay in state I
+                    pass
 
-    def busUpgr(self, originator):
-        pass
+    def busUpgr(self, originator, cacheLine):
+        for processor in range(0, 4):
+            if processor != originator:
+                if cacheLine.processorStates[processor] == 'M':
+                    print("This case shouldn't happen")
+                elif cacheLine.processorStates[processor] == 'O':
+                    cacheLine.processorStates[processor] = 'I'
+                    cacheLine.tags[processor] = None
+                    self.processorStatTracker[processor].invalidationFromO += 1
+                elif cacheLine.processorStates[processor] == 'E':
+                    print("This also shouldn't happen")
+                elif cacheLine.processorStates[processor] == 'S':
+                    cacheLine.processorStates[processor] = 'I'
+                    cacheLine.tags[processor] = None
+                    self.processorStatTracker[processor].invalidationFromS += 1
+                elif cacheLine.processorStates[processor] == 'I':
+                    #Stay in state I
+                    pass
 
     def readCacheRecordsFromFiles(self):
         for i in range(0, 4):
@@ -131,12 +203,8 @@ class CacheCoherence:
         print()
 
         print("Dirty Writebacks: P0 = {}, P1 = {}, P2 = {}, P3 = {}".format(self.processorStatTracker[0].dirtyWriteBacks, self.processorStatTracker[1].dirtyWriteBacks, self.processorStatTracker[2].dirtyWriteBacks, self.processorStatTracker[3].dirtyWriteBacks))
-        print("Currently dirty cache lines at indexes: ", end='')
-        for i in range(0, 512):
-            if 'M' in self.cacheLines[i].processorStates or 'O' in self.cacheLines[i].processorStates:
-                print("{}, ".format(i), end='')
 
-        print('\n')
+        print()
 
         for processor in range(0, 4):
             m = 0
