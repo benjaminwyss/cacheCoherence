@@ -53,14 +53,11 @@ class CacheCoherence:
             cacheLine = self.cacheLines[cacheRecord.index]
             state = cacheLine.processorStates[cacheRecord.processor]
 
-            conflictMiss = False
-
             #Handle Conflict Misses
             if (cacheLine.tags[cacheRecord.processor] != None and cacheLine.tags[cacheRecord.processor] != cacheRecord.tag):
                 if cacheLine.processorStates[cacheRecord.processor] == 'M' or cacheLine.processorStates[cacheRecord.processor] == 'O':
                     self.processorStatTracker[cacheRecord.processor].dirtyWriteBacks += 1
                 cacheLine.processorStates[cacheRecord.processor] = 'I'
-                conflictMiss = True
 
             #Update Tag Array
             cacheLine.tags[cacheRecord.processor] = cacheRecord.tag
@@ -116,17 +113,20 @@ class CacheCoherence:
             if cacheLine.processorStates[processor] == 'M' and cacheLine.tags[processor] == tag:
                 self.processorStatTracker[processor].cacheTransfers[originator] += 1
                 cacheLine.processorStates[processor] = 'O'
-                break
-            elif cacheLine.processorStates[processor] == 'O' and cacheLine.tags[processor] == tag:
+                return
+        for processor in range(0, 4):
+            if cacheLine.processorStates[processor] == 'O' and cacheLine.tags[processor] == tag:
                 self.processorStatTracker[processor].cacheTransfers[originator] += 1
-                break
-            elif cacheLine.processorStates[processor] == 'E' and cacheLine.tags[processor] == tag:
+                return
+        for processor in range(0, 4):
+            if cacheLine.processorStates[processor] == 'E' and cacheLine.tags[processor] == tag:
                 self.processorStatTracker[processor].cacheTransfers[originator] += 1
                 cacheLine.processorStates[processor] = 'S'
-                break
-            elif cacheLine.processorStates[processor] == 'S' and cacheLine.tags[processor] == tag:
+                return
+        for processor in range(0, 4):
+            if cacheLine.processorStates[processor] == 'S' and cacheLine.tags[processor] == tag:
                 self.processorStatTracker[processor].cacheTransfers[originator] += 1
-                break
+                return
 
     def busRdX(self, originator, cacheLine, tag):
         for processor in range(0, 4):
