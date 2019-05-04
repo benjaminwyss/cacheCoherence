@@ -7,4 +7,4 @@
     `python3 cacheCoherence.py`
     2. If your computer only has a version of python 3 installed, run:
     `python cacheCoherence.py`
-3. All documented code is found within the file cacheCoherence.py, and my implementation writeup is found within report.docx
+3. All documented code is found within cacheCoherence.py, and my implementation writeup is found within report.docx
