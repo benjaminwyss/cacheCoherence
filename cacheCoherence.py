@@ -101,7 +101,6 @@ class CacheCoherence:
         """
         for cacheRecord in self.cacheRecords:
             cacheLine = self.cacheLines[cacheRecord.index]
-            state = cacheLine.processorStates[cacheRecord.processor]
 
             #Handle Conflict Misses
             if (cacheLine.tags[cacheRecord.processor] != None and cacheLine.tags[cacheRecord.processor] != cacheRecord.tag):
@@ -111,6 +110,8 @@ class CacheCoherence:
 
             #Update Tag Array
             cacheLine.tags[cacheRecord.processor] = cacheRecord.tag
+
+            state = cacheLine.processorStates[cacheRecord.processor]
 
             #prWr
             if (cacheRecord.isWrite):
@@ -143,10 +144,17 @@ class CacheCoherence:
                     # remain in S state, no bus signal
                     pass
                 elif state == 'I':
-                    if 'M' in cacheLine.processorStates or 'O' in cacheLine.processorStates or 'E' in cacheLine.processorStates or 'S' in cacheLine.processorStates:
-                        self.busRd(cacheRecord.processor, cacheLine, cacheRecord.tag)
-                        cacheLine.processorStates[cacheRecord.processor] = 'S'
-                    else:
+                    #This boolean is used to help determine if no cache to cache transfer could occur and the processor must read from memory
+                    goToE = True
+                    for processor in range(0, 4):
+                        if processor != cacheRecord.processor:
+                            if ((cacheLine.processorStates[processor] == 'M' or cacheLine.processorStates[processor] == 'O' or cacheLine.processorStates[processor] == 'E' or cacheLine.processorStates[processor] == 'S') and cacheLine.tags[processor] == cacheRecord.tag):
+                                cacheLine.processorStates[cacheRecord.processor] = 'S'
+                                self.busRd(cacheRecord.processor, cacheLine, cacheRecord.tag)
+                                goToE = False
+                                break
+                    #If no processor with the desired tag is found, get it from memory instead
+                    if goToE:
                         cacheLine.processorStates[cacheRecord.processor] = 'E'
                         #In a real processor, this would cause a BusRd signal, but since the data is fetched from memory nothing needs to be simulated here.
 
@@ -234,13 +242,13 @@ class CacheCoherence:
         for processor in range(0, 4):
             if processor != originator and cacheLine.tags[processor] == tag:
                 if cacheLine.processorStates[processor] == 'M':
-                    print("This case shouldn't happen")
+                    print("This case shouldn't happen", cacheLine)
                 elif cacheLine.processorStates[processor] == 'O':
                     cacheLine.processorStates[processor] = 'I'
                     cacheLine.tags[processor] = None
                     self.processorStatTracker[processor].invalidationFromO += 1
                 elif cacheLine.processorStates[processor] == 'E':
-                    print("This also shouldn't happen")
+                    print("This also shouldn't happen", cacheLine)
                 elif cacheLine.processorStates[processor] == 'S':
                     cacheLine.processorStates[processor] = 'I'
                     cacheLine.tags[processor] = None
@@ -274,8 +282,8 @@ class CacheCoherence:
         """
         for record in self.cacheRecords:
             print(record)
-        for cacheLine in self.cacheLines:
-            print(cacheLine)
+        for i in range (0, 512):
+            print(i, self.cacheLines[i])
 
     def printStats(self):
         """
